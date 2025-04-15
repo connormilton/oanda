@@ -1,0 +1,95 @@
+{
+  "last_updated": "2025-04-15T20:10:33.548347+00:00",
+  "pairs": {
+    "CS.D.EURUSD.TODAY.IP": [
+      {
+        "direction": "BUY",
+        "entry_price": 1.1305,
+        "stop_loss": 1.1259,
+        "take_profit": [
+          1.1325,
+          1.134
+        ],
+        "risk_reward": 2.17,
+        "pattern": "Break above resistance",
+        "reasoning": "High analysis quality and favorable risk-reward ratio make this a compelling buy, aligning with our strategy to prioritize high-probability setups.",
+        "timestamp": "2025-04-15T18:28:31.151389+00:00"
+      }
+    ],
+    "CS.D.GBPJPY.TODAY.IP": [
+      {
+        "direction": "BUY",
+        "entry_price": 189.25,
+        "stop_loss": 189.0,
+        "take_profit": [
+          190.0,
+          190.5
+        ],
+        "risk_reward": 3.0,
+        "pattern": "Double bottom neckline break",
+        "reasoning": "The trade offers a strong risk-reward with a clear technical pattern, contributing to portfolio diversification across currency pairs.",
+        "timestamp": "2025-04-15T18:28:31.268488+00:00"
+      }
+    ],
+    "CS.D.USDJPY.TODAY.IP": [
+      {
+        "direction": "BUY",
+        "entry_price": 143.3,
+        "stop_loss": 142.8,
+        "take_profit": [
+          143.6,
+          143.8
+        ],
+        "risk_reward": 2.0,
+        "pattern": "ascending triangle",
+        "reasoning": "Entering based on breakout of ascending triangle with high analysis quality. Trailing stop to protect gains.",
+        "timestamp": "2025-04-15T18:43:58.511247+00:00"
+      }
+    ],
+    "CS.D.GBPUSD.TODAY.IP": [
+      {
+        "direction": "BUY",
+        "entry_price": 1.322,
+        "stop_loss": 1.318,
+        "take_profit": [
+          1.325,
+          1.328
+        ],
+        "risk_reward": 2.5,
+        "pattern": "double bottom",
+        "reasoning": "Buying after neckline breakout of double bottom. Partial profit to secure early gains.",
+        "timestamp": "2025-04-15T18:43:58.631890+00:00"
+      }
+    ],
+    "CS.D.EURJPY.TODAY.IP": [
+      {
+        "direction": "SELL",
+        "entry_price": 161.3,
+        "stop_loss": 162.0,
+        "take_profit": [
+          161.0,
+          160.7
+        ],
+        "risk_reward": 2.0,
+        "pattern": "head and shoulders",
+        "reasoning": "Selling on breakdown below head and shoulders neckline. Moving to breakeven to minimize risk after initial move.",
+        "timestamp": "2025-04-15T18:43:58.749665+00:00"
+      }
+    ],
+    "GBP_USD": [
+      {
+        "direction": "BUY",
+        "entry_price": 1.322,
+        "stop_loss": 1.32,
+        "take_profit": [
+          1.324,
+          1.326
+        ],
+        "risk_reward": 2.0,
+        "pattern": "Pullback",
+        "reasoning": "The market shows a potential for GBP strength, entering on a pullback offers a favorable risk-reward.",
+        "timestamp": "2025-04-15T20:10:33.548341+00:00"
+      }
+    ]
+  }
+}

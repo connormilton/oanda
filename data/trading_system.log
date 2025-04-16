@@ -564,3 +564,51 @@
 2025-04-16 01:14:35,054 [INFO] Account balance: 1995.6109 GBP
 2025-04-16 01:14:35,223 [INFO] Available forex pairs: 68
 2025-04-16 01:14:35,380 [INFO] Open positions: 1
+2025-04-16 01:18:51,477 [INFO] Initializing Collaborative LLM Forex Trading System (OANDA)
+2025-04-16 01:18:51,734 [INFO] OANDA API connected successfully. Found 3 accounts.
+2025-04-16 01:18:51,734 [INFO] Using OANDA account ID: 001-004-13685589-002
+2025-04-16 01:18:51,894 [INFO] Account balance: 1995.6109 GBP
+2025-04-16 01:18:52,050 [INFO] Connected to OANDA account: 001-004-13685589-002
+2025-04-16 01:18:52,051 [INFO] Account balance: 1995.6109 GBP
+2025-04-16 01:18:52,293 [INFO] Available forex pairs: 68
+2025-04-16 01:18:52,456 [INFO] Open positions: 1
+2025-04-16 01:22:03,253 [INFO] Initializing Collaborative LLM Forex Trading System (OANDA)
+2025-04-16 01:22:03,470 [INFO] OANDA API connected successfully. Found 3 accounts.
+2025-04-16 01:22:03,471 [INFO] Using OANDA account ID: 001-004-13685589-002
+2025-04-16 01:22:03,628 [INFO] Account balance: 1995.6109 GBP
+2025-04-16 01:22:03,774 [INFO] Connected to OANDA account: 001-004-13685589-002
+2025-04-16 01:22:03,774 [INFO] Account balance: 1995.6109 GBP
+2025-04-16 01:22:03,945 [INFO] Available forex pairs: 68
+2025-04-16 01:22:04,103 [INFO] Open positions: 1
+2025-04-16 01:27:25,897 [INFO] Initializing Collaborative LLM Forex Trading System (OANDA)
+2025-04-16 01:27:26,106 [INFO] OANDA API connected successfully. Found 3 accounts.
+2025-04-16 01:27:26,106 [INFO] Using OANDA account ID: 001-004-13685589-002
+2025-04-16 01:27:26,271 [INFO] Account balance: 1995.6109 GBP
+2025-04-16 01:27:26,428 [INFO] Connected to OANDA account: 001-004-13685589-002
+2025-04-16 01:27:26,429 [INFO] Account balance: 1995.6109 GBP
+2025-04-16 01:27:26,583 [INFO] Available forex pairs: 68
+2025-04-16 01:27:26,738 [INFO] Open positions: 1
+2025-04-16 01:27:26,741 [INFO] Starting Collaborative LLM Forex Trading System
+2025-04-16 01:27:26,746 [INFO] Starting collaborative trading cycle
+2025-04-16 01:27:35,562 [INFO] Running Scout Agent
+2025-04-16 01:27:43,440 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-04-16 01:27:43,450 [INFO] Scout found 3 opportunities
+2025-04-16 01:27:43,454 [INFO] Running Strategist Agent
+2025-04-16 01:28:20,873 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-04-16 01:28:20,880 [INFO] Strategist analyzed 2 pairs
+2025-04-16 01:28:20,884 [INFO] Running Executor Agent
+2025-04-16 01:28:20,886 [INFO] Converted risk_reward ratio '2.0' to 2.0
+2025-04-16 01:28:20,886 [INFO] Converted risk_reward ratio '2.0' to 2.0
+2025-04-16 01:28:52,318 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-04-16 01:28:52,326 [INFO] Executor generated 2 trades and 1 position actions
+2025-04-16 01:28:52,330 [INFO] Executing trading actions
+2025-04-16 01:28:52,582 [INFO] Executing BUY EUR_USD | Units: 4000000 (from size 40.0)
+2025-04-16 01:28:52,747 [ERROR] Trade execution failed: 
+2025-04-16 01:28:52,748 [ERROR] Failed to execute trade: {'outcome': 'FAILED', 'reason': ''}
+2025-04-16 01:28:52,748 [INFO] Executing BUY GBP_USD | Units: 4000000 (from size 40.0)
+2025-04-16 01:28:52,905 [ERROR] Trade execution failed: 
+2025-04-16 01:28:52,905 [ERROR] Failed to execute trade: {'outcome': 'FAILED', 'reason': ''}
+2025-04-16 01:28:52,906 [INFO] Updating stop for EUR_USD to 1.12759
+2025-04-16 01:28:53,219 [INFO] Successfully updated stop: EUR_USD position_EUR_USD_BUY to 1.12759
+2025-04-16 01:28:53,224 [INFO] Budget status: $19.84 remaining (99.2%)
+2025-04-16 01:28:53,226 [INFO] Cycle complete. Sleeping for 15.0 minutes until next cycle.

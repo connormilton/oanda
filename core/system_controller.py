@@ -18,11 +18,7 @@ from agents.strategist_agent import StrategistAgent
 from agents.executor_agent import ExecutorAgent
 from agents.team_reviewer import TeamReviewer
 
-from utils.api_connectors import (
-    execute_trade, 
-    close_position, 
-    update_stop_loss
-)
+from utils.oanda_connector import execute_trade, close_position, update_stop_loss
 
 logger = logging.getLogger("CollaborativeTrader")
 
@@ -37,14 +33,14 @@ FOREX_PAIRS = [
 class SystemController:
     """Controls the collaborative trading system workflow"""
     
-    def __init__(self, ig_service, polygon_client):
+    def __init__(self, oanda_client):
         # Set up OpenAI API
         openai.api_key = os.getenv("OPENAI_API_KEY")
         
         # Initialize components
         self.budget = LLMBudgetManager()
         self.memory = TradingMemory()
-        self.data = DataCollector(ig_service, polygon_client)
+        self.data = DataCollector(oanda_client)
         
         # Initialize agents
         self.scout = ScoutAgent(self.budget)
@@ -53,7 +49,7 @@ class SystemController:
         self.team_reviewer = TeamReviewer(self.budget)
         
         # Trading services
-        self.ig = ig_service
+        self.oanda = oanda_client
         
         # Initialize agent responses
         self.agent_responses = {
@@ -80,7 +76,7 @@ class SystemController:
             trade_actions = executor_result.get("trade_actions", [])
             for trade in trade_actions:
                 if trade.get("action_type") == "OPEN":
-                    success, trade_result = execute_trade(self.ig, trade)
+                    success, trade_result = execute_trade(self.oanda, trade)
                     if success:
                         logger.info(f"Successfully executed trade: {trade.get('epic')} {trade.get('direction')}")
                         # Log the trade in memory
@@ -106,7 +102,7 @@ class SystemController:
                 action_type = action.get("action_type", "").upper()
                 
                 if action_type == "CLOSE":
-                    success, result = close_position(self.ig, action, positions)
+                    success, result = close_position(self.oanda, action, positions)
                     if success:
                         logger.info(f"Successfully closed position: {action.get('epic')} {action.get('dealId')}")
                         # Log the close
@@ -115,7 +111,7 @@ class SystemController:
                         logger.error(f"Failed to close position: {result}")
                         
                 elif action_type == "UPDATE_STOP":
-                    success, result = update_stop_loss(self.ig, action)
+                    success, result = update_stop_loss(self.oanda, action)
                     if success:
                         logger.info(f"Successfully updated stop: {action.get('epic')} {action.get('dealId')} to {action.get('new_level')}")
                         # Log the update

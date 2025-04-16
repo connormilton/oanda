@@ -1,4 +1,7 @@
-# collaborative_trading_prompts.py - Advanced prompts for collaborative LLM forex trading agents
+"""
+Collaborative Trading Prompts Module
+Contains prompt templates for all agent interactions
+"""
 
 class CollaborativeTradingPrompts:
     """Advanced prompt templates for a team of 3 collaborative trading agents"""
@@ -259,7 +262,7 @@ Respond with a JSON object containing:
 
     @staticmethod
     def decision_maker(analysis_results, account_data, positions, system_memory, market_data, 
-                       recent_trades=None, execution_history=None):
+                      recent_trades=None, execution_history=None):
         """
         Build prompt for decision agent (Executor)
         The executor makes final decisions and manages overall portfolio risk
@@ -367,6 +370,15 @@ Your specific responsibilities are:
 - Win Rate: {win_rate:.1f}% ({system_memory.get('win_count', 0)}/{system_memory.get('trade_count', 0)} trades)
 - Risk Multiplier: {system_memory.get('risk_multiplier', 1.0)}x
 
+## Risk Management Rules
+- Risk per trade should be between 1-5% of account balance
+- Higher confidence trades (8-10 quality) can use 3-5% risk
+- Medium confidence trades (6-7 quality) should use 2-3% risk
+- Lower confidence trades (<6 quality) should use 1-2% risk
+- Never exceed 30% total account risk across all positions
+- Never exceed 10% exposure to any single currency
+- Always ensure stop loss is set to properly calculate risk
+
 ## Current Market Snapshot
 {market_conditions}
 
@@ -382,7 +394,7 @@ Your specific responsibilities are:
 
 ## Your Task
 1. Decide which trade opportunities to execute based on quality and portfolio balance
-2. Determine final position sizes and risk levels (aim for consistent risk per trade)
+2. Determine appropriate risk percentage (1-5%) for each trade based on confidence
 3. If we have fewer than 3 open positions, prioritize opening new positions
 4. For existing positions, decide if any need to be closed or have stops adjusted
 5. Implement risk management strategies for each new position
@@ -394,7 +406,7 @@ Your specific responsibilities are:
 4. PARTIAL PROFIT - Take profits on part of position at first target
 
 ## Self-Improvement
-Reflect on execution performance. What position sizing has worked best? Which stop strategies have been most effective? How can you better balance the portfolio to achieve the 10% daily target?
+Reflect on execution performance. What risk management approach has worked best? Which stop strategies have been most effective? How can you better balance the portfolio to achieve the 10% daily target?
 """
         
         # Use raw string for response format to avoid f-string formatting issues
@@ -405,12 +417,11 @@ Respond with a JSON object containing:
    - "action_type": "OPEN"
    - "epic": Currency pair code
    - "direction": "BUY" or "SELL"
-   - "size": Position size
+   - "risk_percent": Percentage of account risked (1-5%)
    - "entry_price": Ideal entry price
    - "entry_range": [lower, upper] range for entry
    - "initial_stop_loss": Initial stop loss level
    - "take_profit_levels": [level1, level2, ...]
-   - "risk_percent": Percentage of account risked
    - "risk_reward": Expected R:R ratio
    - "pattern": Pattern being traded
    - "stop_management": [{"type": "strategy", "settings": {"specific": "settings"}}]

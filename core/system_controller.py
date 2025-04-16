@@ -18,7 +18,11 @@ from agents.strategist_agent import StrategistAgent
 from agents.executor_agent import ExecutorAgent
 from agents.team_reviewer import TeamReviewer
 
-from utils.oanda_connector import execute_trade, close_position, update_stop_loss
+from utils.api_connectors import (
+    execute_trade, 
+    close_position, 
+    update_stop_loss
+)
 
 logger = logging.getLogger("CollaborativeTrader")
 
@@ -33,14 +37,14 @@ FOREX_PAIRS = [
 class SystemController:
     """Controls the collaborative trading system workflow"""
     
-    def __init__(self, oanda_client):
+    def __init__(self, ig_service, polygon_client=None):
         # Set up OpenAI API
         openai.api_key = os.getenv("OPENAI_API_KEY")
         
         # Initialize components
         self.budget = LLMBudgetManager()
         self.memory = TradingMemory()
-        self.data = DataCollector(oanda_client)
+        self.data = DataCollector(ig_service, polygon_client)
         
         # Initialize agents
         self.scout = ScoutAgent(self.budget)
@@ -49,7 +53,7 @@ class SystemController:
         self.team_reviewer = TeamReviewer(self.budget)
         
         # Trading services
-        self.oanda = oanda_client
+        self.ig = ig_service
         
         # Initialize agent responses
         self.agent_responses = {
@@ -59,8 +63,122 @@ class SystemController:
             "team_review": None
         }
     
+    def validate_trade(self, trade, account_data, positions):
+        """Validate trade parameters and ensure they meet risk management criteria
+        
+        Args:
+            trade (dict): Trade details
+            account_data (dict): Account information
+            positions (DataFrame): Current open positions
+            
+        Returns:
+            dict: Validated and possibly modified trade
+        """
+        try:
+            # Ensure we have the basic required fields
+            required_fields = ["epic", "direction", "risk_percent"]
+            for field in required_fields:
+                if field not in trade:
+                    logger.warning(f"Trade missing required field: {field}. Cannot execute.")
+                    return None
+            
+            # Get account balance
+            account_balance = float(account_data.get('balance', 1000))
+            
+            # Validate risk percentage (1-5%)
+            risk_percent = float(trade.get("risk_percent", 2.0))
+            if risk_percent < 1.0:
+                logger.warning(f"Risk percentage {risk_percent}% below minimum 1%. Adjusting to 1%.")
+                trade["risk_percent"] = 1.0
+            elif risk_percent > 5.0:
+                logger.warning(f"Risk percentage {risk_percent}% exceeds maximum 5%. Capping at 5%.")
+                trade["risk_percent"] = 5.0
+            
+            # Calculate current total risk exposure
+            total_risk = self.calculate_portfolio_risk(positions)
+            new_total_risk = total_risk + float(trade.get("risk_percent", 2.0))
+            
+            # Check 30% total risk limit
+            if new_total_risk > 30.0:
+                logger.warning(f"New trade would put total risk at {new_total_risk:.2f}%, exceeding 30% limit. Canceling trade.")
+                return None
+            
+            # Check currency exposure limit (10%)
+            currency_risk = self.calculate_currency_risk(positions, trade.get("epic"))
+            new_currency_risk = currency_risk + float(trade.get("risk_percent", 2.0))
+            
+            # Extract currency from the epic
+            currency = trade.get("epic").split("_")[0] if "_" in trade.get("epic") else trade.get("epic")[5:8]
+            
+            if new_currency_risk > 10.0:
+                logger.warning(f"New trade would put {currency} exposure at {new_currency_risk:.2f}%, exceeding 10% limit. Canceling trade.")
+                return None
+            
+            # Validate entry price and stop loss
+            if "entry_price" not in trade or not trade["entry_price"]:
+                logger.warning("Trade missing entry price. Cannot properly validate.")
+                return None
+                
+            if "initial_stop_loss" not in trade or not trade["initial_stop_loss"]:
+                logger.warning("Trade missing stop loss. Cannot properly validate risk.")
+                return None
+            
+            return trade
+            
+        except Exception as e:
+            logger.error(f"Error validating trade: {e}")
+            return None
+    
+    def calculate_portfolio_risk(self, positions):
+        """Calculate current portfolio risk based on open positions
+        
+        Args:
+            positions (DataFrame): Current open positions
+            
+        Returns:
+            float: Total risk percentage
+        """
+        if positions is None or len(positions) == 0:
+            return 0.0
+        
+        # In a real system, this would be calculated based on 
+        # actual stop loss distances and position sizes
+        # For this simplified version, we'll assume each position
+        # has a risk of 2% (conservative estimate)
+        return len(positions) * 2.0
+
+    def calculate_currency_risk(self, positions, epic):
+        """Calculate risk exposure for a specific currency
+        
+        Args:
+            positions (DataFrame): Current open positions
+            epic (str): Instrument epic or name
+            
+        Returns:
+            float: Risk percentage for the currency
+        """
+        if positions is None or len(positions) == 0:
+            return 0.0
+        
+        # Extract the currency from the epic
+        currency = epic.split("_")[0] if "_" in epic else epic[5:8]
+        
+        # Calculate risk for positions with the same currency
+        currency_risk = 0.0
+        for _, position in positions.iterrows():
+            position_epic = position.get("epic", "")
+            position_currency = position_epic.split("_")[0] if "_" in position_epic else position_epic[5:8]
+            
+            if position_currency == currency:
+                # Assume 2% risk per position with the same currency
+                currency_risk += 2.0
+        
+        return currency_risk
+    
     def execute_trading_actions(self, executor_result):
-        """Execute the trading actions recommended by the executor agent"""
+        """Execute the trading actions recommended by the executor agent
+        with added risk management validation
+        """
         logger.info("Executing trading actions")
         
         try:
@@ -72,15 +190,28 @@ class SystemController:
             # Get current positions
             positions = self.data.get_positions()
             
+            # Get account data
+            account_data = self.data.get_account_data()
+            
             # Execute new trades
             trade_actions = executor_result.get("trade_actions", [])
             for trade in trade_actions:
+                # Validate trade against risk management rules
+                validated_trade = self.validate_trade(trade, account_data, positions)
+                
+                if validated_trade is None:
+                    logger.warning(f"Trade for {trade.get('epic')} failed validation. Skipping.")
+                    continue
+                    
                 if trade.get("action_type") == "OPEN":
-                    success, trade_result = execute_trade(self.oanda, trade)
+                    success, trade_result = execute_trade(self.ig, validated_trade, positions)
                     if success:
                         logger.info(f"Successfully executed trade: {trade.get('epic')} {trade.get('direction')}")
                         # Log the trade in memory
                         self.memory.log_trade(trade_result)
+                        
+                        # Update positions after trade execution
+                        positions = self.data.get_positions()
                         
                         # Save analysis for this pair
                         if "epic" in trade:
@@ -102,16 +233,19 @@ class SystemController:
                 action_type = action.get("action_type", "").upper()
                 
                 if action_type == "CLOSE":
-                    success, result = close_position(self.oanda, action, positions)
+                    success, result = close_position(self.ig, action, positions)
                     if success:
                         logger.info(f"Successfully closed position: {action.get('epic')} {action.get('dealId')}")
                         # Log the close
                         self.memory.log_trade(result)
+                        
+                        # Update positions after closing
+                        positions = self.data.get_positions()
                     else:
                         logger.error(f"Failed to close position: {result}")
                         
                 elif action_type == "UPDATE_STOP":
-                    success, result = update_stop_loss(self.oanda, action)
+                    success, result = update_stop_loss(self.ig, action)
                     if success:
                         logger.info(f"Successfully updated stop: {action.get('epic')} {action.get('dealId')} to {action.get('new_level')}")
                         # Log the update

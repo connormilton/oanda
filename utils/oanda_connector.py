@@ -392,12 +392,95 @@ def get_oanda_client():
         return None
 
 
-def execute_trade(oanda_client, trade):
-    """Execute a new trade on OANDA platform
+def calculate_pip_value(instrument, account_currency, price=1.0, units=1):
+    """Calculate the value of a pip for a given instrument and units
+    
+    Args:
+        instrument (str): OANDA instrument name (e.g., "EUR_USD")
+        account_currency (str): Account currency (e.g., "USD")
+        price (float): Current price of the instrument
+        units (int): Number of units in the position
+        
+    Returns:
+        float: Value of 1 pip in account currency
+    """
+    # Set pip size based on JPY or standard pairs
+    pip_size = 0.01 if "_JPY" in instrument else 0.0001
+    
+    # Extract quote currency
+    quote_currency = instrument.split('_')[1]
+    
+    # Calculate pip value in quote currency
+    pip_value_quote = pip_size * units
+    
+    # If quote currency is the same as account currency, return directly
+    if quote_currency == account_currency:
+        return pip_value_quote
+    
+    # Otherwise, convert to account currency (simplified)
+    # In a real system, you would use current exchange rates
+    # This is a simplified approximation
+    pip_value_account = pip_value_quote
+    
+    return pip_value_account
+
+
+def calculate_position_size(account_balance, risk_percent, entry_price, stop_loss, instrument, account_currency):
+    """Calculate position size based on risk percentage and stop distance
+    
+    Args:
+        account_balance (float): Account balance
+        risk_percent (float): Risk percentage (1-5%)
+        entry_price (float): Entry price
+        stop_loss (float): Stop loss price
+        instrument (str): OANDA instrument name
+        account_currency (str): Account currency
+        
+    Returns:
+        int: Position size in units
+    """
+    # Calculate risk amount in account currency
+    risk_amount = account_balance * (risk_percent / 100)
+    
+    # Calculate stop distance in price
+    stop_distance = abs(entry_price - stop_loss)
+    
+    # Ensure stop distance is not zero
+    if stop_distance <= 0:
+        logger.warning(f"Stop distance is zero or negative for {instrument}. Using minimum value.")
+        stop_distance = 0.0001  # Minimum stop distance
+    
+    # Convert stop distance to pips
+    pip_multiplier = 100 if "_JPY" in instrument else 10000
+    stop_distance_pips = stop_distance * pip_multiplier
+    
+    # Calculate pip value for 1 unit
+    pip_value_per_unit = calculate_pip_value(instrument, account_currency, entry_price, 1)
+    
+    # Calculate required units for the risk amount
+    try:
+        required_units = risk_amount / (stop_distance_pips * pip_value_per_unit)
+        
+        # Round down to whole units
+        units = int(required_units)
+        
+        # Ensure minimum units
+        if units < 1:
+            units = 1
+            
+        return units
+    except Exception as e:
+        logger.error(f"Error calculating position size: {e}")
+        return 10  # Default minimum position size
+
+
+def execute_trade(oanda_client, trade, positions=None):
+    """Execute a new trade on OANDA platform with proper risk management
     
     Args:
         oanda_client (OandaAPI): OANDA API client
         trade (dict): Trade details
+        positions (DataFrame, optional): Current open positions
         
     Returns:
         tuple: (success, trade_data)
@@ -405,21 +488,72 @@ def execute_trade(oanda_client, trade):
     try:
         epic = trade.get("epic")
         direction = trade.get("direction")
-        size = trade.get("size", 1.0)
+        size = trade.get("size")
+        risk_percent = trade.get("risk_percent", 2.0)
         
-        # First ensure size is a float
-        try:
-            size = float(size)
-        except (ValueError, TypeError):
-            logger.warning(f"Could not convert size '{size}' to float, using default")
-            size = 1.0
-
         # Convert IG epic to OANDA instrument
         instrument = convert_ig_epic_to_oanda(epic)
         
-        # IMPROVED CONVERSION: Convert size from lots to units (1 lot = 100,000 units)
-        # First, standardize to proper float value
-        units = int(size * 100000)
+        # Get account information
+        account = oanda_client.get_account()
+        account_balance = float(account.get("balance", 1000))
+        account_currency = account.get("currency", "USD")
+        
+        # Get entry and stop loss prices
+        entry_price = float(trade.get("entry_price", 0))
+        stop_loss = float(trade.get("initial_stop_loss", 0))
+        
+        # If no positions provided, get them
+        if positions is None:
+            positions = oanda_client.get_open_positions()
+        
+        # Check for 30% total risk limit
+        total_risk_percent = calculate_total_risk_percentage(positions, risk_percent, account_balance)
+        if total_risk_percent > 30.0:
+            logger.warning(f"Total risk percentage {total_risk_percent:.2f}% exceeds 30% limit. Canceling trade.")
+            return False, {"outcome": "CANCELED", "reason": "Total risk percentage exceeds 30% limit"}
+        
+        # Check for 10% same currency limit
+        currency_risk = calculate_currency_risk_percentage(positions, instrument, risk_percent, account_balance)
+        if currency_risk > 10.0:
+            logger.warning(f"Risk for {instrument.split('_')[0]} ({currency_risk:.2f}%) exceeds 10% limit. Canceling trade.")
+            return False, {"outcome": "CANCELED", "reason": f"Risk for {instrument.split('_')[0]} exceeds 10% limit"}
+        
+        # Calculate position size based on risk
+        if entry_price > 0 and stop_loss > 0:
+            # Use proper risk-based position sizing
+            units = calculate_position_size(
+                account_balance, 
+                risk_percent, 
+                entry_price, 
+                stop_loss, 
+                instrument, 
+                account_currency
+            )
+            
+            # Log risk calculation
+            stop_distance = abs(entry_price - stop_loss)
+            pip_multiplier = 100 if "_JPY" in instrument else 10000
+            stop_distance_pips = stop_distance * pip_multiplier
+            
+            logger.info(f"Risk calculation for {instrument}:")
+            logger.info(f"  Account balance: ${account_balance:.2f}")
+            logger.info(f"  Risk: {risk_percent:.2f}% (${account_balance * risk_percent / 100:.2f})")
+            logger.info(f"  Entry: {entry_price:.5f}, Stop: {stop_loss:.5f}")
+            logger.info(f"  Stop distance: {stop_distance_pips:.1f} pips")
+            logger.info(f"  Position size: {units} units")
+        else:
+            # Fallback to size-based calculation if prices not provided
+            # First ensure size is a float
+            try:
+                size = float(size) if size is not None else 0.01
+            except (ValueError, TypeError):
+                logger.warning(f"Could not convert size '{size}' to float, using default")
+                size = 0.01
+            
+            # Convert size to units with a conservative multiplier
+            units = int(size * 100)  # Small multiplier for small account
+            logger.info(f"Using size-based position: {size} → {units} units")
         
         # Ensure minimum unit size (1) and apply direction
         if abs(units) < 1:
@@ -467,7 +601,7 @@ def execute_trade(oanda_client, trade):
                 "entry_price": float(fill_details.get("price", 0)),
                 "stop_loss": stop_loss,
                 "take_profit": take_profit,
-                "risk_percent": trade.get("risk_percent"),
+                "risk_percent": risk_percent,
                 "risk_reward": trade.get("risk_reward"),
                 "pattern": trade.get("pattern"),
                 "stop_management": trade.get("stop_management", []),
@@ -486,8 +620,72 @@ def execute_trade(oanda_client, trade):
             return False, {"outcome": "FAILED", "reason": rejection_reason}
             
     except Exception as e:
-        logger.error(f"Trade execution error: {e}")
-        return False, {"outcome": "ERROR", "reason": str(e)}
+        error_message = str(e)
+        if "UNITS_LIMIT_EXCEEDED" in error_message:
+            error_message = f"Position size too large for account. Tried {units} units, reduce 'risk_percent' parameter."
+        elif "INSUFFICIENT_FUNDS" in error_message:
+            error_message = f"Insufficient funds for trade size {size} (units: {units})."
+        
+        logger.error(f"Trade execution error: {error_message}")
+        return False, {"outcome": "ERROR", "reason": error_message}
+
+
+def calculate_total_risk_percentage(positions, new_trade_risk, account_balance):
+    """Calculate total risk percentage including existing positions
+    
+    Args:
+        positions (DataFrame): Current positions
+        new_trade_risk (float): Risk percentage for new trade
+        account_balance (float): Account balance
+        
+    Returns:
+        float: Total risk percentage
+    """
+    # Default to new trade risk if no positions
+    if positions is None or len(positions) == 0:
+        return float(new_trade_risk)
+        
+    # Estimate risk for existing positions (simplified)
+    # In a real system, you would calculate this based on stop loss distances
+    existing_risk = sum([2.0 for _ in range(len(positions))])  # Assume 2% risk per position
+    
+    # Add new trade risk
+    total_risk = existing_risk + float(new_trade_risk)
+    
+    return total_risk
+
+
+def calculate_currency_risk_percentage(positions, new_instrument, new_trade_risk, account_balance):
+    """Calculate risk percentage for a specific currency
+    
+    Args:
+        positions (DataFrame): Current positions
+        new_instrument (str): New instrument (e.g., "EUR_USD")
+        new_trade_risk (float): Risk percentage for new trade
+        account_balance (float): Account balance
+        
+    Returns:
+        float: Risk percentage for the currency
+    """
+    # Extract base currency from the instrument
+    base_currency = new_instrument.split('_')[0]
+    
+    # Default to new trade risk if no positions
+    if positions is None or len(positions) == 0:
+        return float(new_trade_risk)
+        
+    # Calculate risk for positions with the same base currency
+    existing_risk = 0.0
+    for _, position in positions.iterrows():
+        position_instrument = position.get("epic", "")
+        if isinstance(position_instrument, str) and base_currency in position_instrument.split('_')[0]:
+            # Assume 2% risk per position with same currency
+            existing_risk += 2.0
+    
+    # Add new trade risk
+    total_currency_risk = existing_risk + float(new_trade_risk)
+    
+    return total_currency_risk
 
 
 def close_position(oanda_client, position_action, positions):

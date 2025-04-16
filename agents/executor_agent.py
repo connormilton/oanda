@@ -58,8 +58,8 @@ class ExecutorAgent:
             if result:
                 logger.info(f"Executor generated {len(result.get('trade_actions', []))} trades and {len(result.get('position_actions', []))} position actions")
                 
-                # Process results to ensure all values are proper types
-                self._postprocess_results(result)
+                # Process results to ensure all values are proper types and conform to risk management
+                self._postprocess_results(result, account_data)
                 
                 # Save self-improvement suggestions
                 if "self_improvement" in result:
@@ -95,8 +95,10 @@ class ExecutorAgent:
                     # Set a default value
                     result["risk_reward"] = 2.0
     
-    def _postprocess_results(self, result):
-        """Post-process results to ensure proper data types"""
+    def _postprocess_results(self, result, account_data):
+        """Post-process results to ensure proper data types and risk management compliance"""
+        account_balance = float(account_data.get('balance', 1000))
+        
         if "trade_actions" in result:
             for trade in result["trade_actions"]:
                 # Handle risk_reward conversions
@@ -114,21 +116,50 @@ class ExecutorAgent:
                         logger.warning(f"Could not convert trade risk_reward: {e}")
                         trade["risk_reward"] = 2.0
                 
-                # Ensure size is a float
-                if "size" in trade and not isinstance(trade["size"], (int, float)):
-                    try:
-                        trade["size"] = float(trade["size"])
-                    except:
-                        logger.warning(f"Could not convert size to float: {trade['size']}")
-                        trade["size"] = 0.1  # Default small size
-                
-                # Ensure risk_percent is a float
-                if "risk_percent" in trade and not isinstance(trade["risk_percent"], (int, float)):
+                # Ensure risk_percent is a float and within limits (1-5%)
+                if "risk_percent" in trade:
                     try:
                         trade["risk_percent"] = float(trade["risk_percent"])
-                    except:
-                        logger.warning(f"Could not convert risk_percent to float: {trade['risk_percent']}")
-                        trade["risk_percent"] = 1.0  # Default 1% risk
+                        # Enforce risk limits
+                        if trade["risk_percent"] < 1.0:
+                            logger.warning(f"Risk percentage {trade['risk_percent']}% below minimum 1%. Adjusting to 1%.")
+                            trade["risk_percent"] = 1.0
+                        elif trade["risk_percent"] > 5.0:
+                            logger.warning(f"Risk percentage {trade['risk_percent']}% exceeds maximum 5%. Capping at 5%.")
+                            trade["risk_percent"] = 5.0
+                    except Exception as e:
+                        logger.warning(f"Could not convert risk_percent to float: {trade.get('risk_percent')}. Setting to default 1%.")
+                        trade["risk_percent"] = 1.0
+                else:
+                    # If risk_percent not provided, assign based on analysis quality
+                    analysis_quality = 0
+                    for analysis in result.get("analysis_results", []):
+                        if analysis.get("epic") == trade.get("epic"):
+                            analysis_quality = analysis.get("analysis_quality", 0)
+                            break
+                    
+                    # Set risk based on quality
+                    if analysis_quality >= 8:
+                        trade["risk_percent"] = 3.0  # High quality = higher risk
+                    elif analysis_quality >= 6:
+                        trade["risk_percent"] = 2.0  # Medium quality = medium risk
+                    else:
+                        trade["risk_percent"] = 1.0  # Low quality = low risk
+                
+                # Set size based on risk_percent if not provided
+                # This helps maintain backward compatibility
+                if "size" not in trade or not isinstance(trade["size"], (int, float)):
+                    # Calculate size as a function of risk_percent
+                    # This is a simple approximation - the actual calculation happens in the connector
+                    risk_amount = account_balance * (trade["risk_percent"] / 100)
+                    trade["size"] = risk_amount / 10  # Simplified conversion
+                    logger.info(f"Set size to {trade['size']} based on risk_percent {trade['risk_percent']}%")
+                
+                # Ensure all required fields are present
+                required_fields = ["action_type", "epic", "direction", "risk_percent"]
+                missing_fields = [field for field in required_fields if field not in trade]
+                if missing_fields:
+                    logger.warning(f"Trade missing required fields: {missing_fields}")
     
     def _call_llm(self, prompt):
         """Call LLM API with appropriate model"""

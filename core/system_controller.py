@@ -18,7 +18,7 @@ from agents.strategist_agent import StrategistAgent
 from agents.executor_agent import ExecutorAgent
 from agents.team_reviewer import TeamReviewer
 
-from utils.api_connectors import (
+from utils.oanda_connector import (
     execute_trade, 
     close_position, 
     update_stop_loss
@@ -28,23 +28,23 @@ logger = logging.getLogger("CollaborativeTrader")
 
 # Core currency pairs to trade
 FOREX_PAIRS = [
-    "CS.D.EURUSD.TODAY.IP", "CS.D.USDJPY.TODAY.IP", "CS.D.GBPUSD.TODAY.IP", 
-    "CS.D.AUDUSD.TODAY.IP", "CS.D.USDCAD.TODAY.IP", "CS.D.GBPJPY.TODAY.IP",
-    "CS.D.EURJPY.TODAY.IP", "CS.D.AUDJPY.TODAY.IP", "CS.D.EURGBP.TODAY.IP",
-    "CS.D.USDCHF.TODAY.IP", "CS.D.NZDUSD.TODAY.IP", "CS.D.AUDNZD.TODAY.IP"
+    "EUR_USD", "USD_JPY", "GBP_USD", 
+    "AUD_USD", "USD_CAD", "GBP_JPY", 
+    "EUR_JPY", "AUD_JPY", "EUR_GBP",
+    "USD_CHF", "NZD_USD", "AUD_NZD"
 ]
 
 class SystemController:
     """Controls the collaborative trading system workflow"""
     
-    def __init__(self, ig_service, polygon_client=None):
+    def __init__(self, oanda_client):
         # Set up OpenAI API
         openai.api_key = os.getenv("OPENAI_API_KEY")
         
         # Initialize components
         self.budget = LLMBudgetManager()
         self.memory = TradingMemory()
-        self.data = DataCollector(ig_service, polygon_client)
+        self.data = DataCollector(oanda_client)
         
         # Initialize agents
         self.scout = ScoutAgent(self.budget)
@@ -53,7 +53,7 @@ class SystemController:
         self.team_reviewer = TeamReviewer(self.budget)
         
         # Trading services
-        self.ig = ig_service
+        self.oanda = oanda_client
         
         # Initialize agent responses
         self.agent_responses = {
@@ -204,7 +204,7 @@ class SystemController:
                     continue
                     
                 if trade.get("action_type") == "OPEN":
-                    success, trade_result = execute_trade(self.ig, validated_trade, positions)
+                    success, trade_result = execute_trade(self.oanda, validated_trade, positions)
                     if success:
                         logger.info(f"Successfully executed trade: {trade.get('epic')} {trade.get('direction')}")
                         # Log the trade in memory
@@ -233,7 +233,7 @@ class SystemController:
                 action_type = action.get("action_type", "").upper()
                 
                 if action_type == "CLOSE":
-                    success, result = close_position(self.ig, action, positions)
+                    success, result = close_position(self.oanda, action, positions)
                     if success:
                         logger.info(f"Successfully closed position: {action.get('epic')} {action.get('dealId')}")
                         # Log the close
@@ -245,7 +245,7 @@ class SystemController:
                         logger.error(f"Failed to close position: {result}")
                         
                 elif action_type == "UPDATE_STOP":
-                    success, result = update_stop_loss(self.ig, action)
+                    success, result = update_stop_loss(self.oanda, action)
                     if success:
                         logger.info(f"Successfully updated stop: {action.get('epic')} {action.get('dealId')} to {action.get('new_level')}")
                         # Log the update
@@ -310,6 +310,13 @@ class SystemController:
                         epic = opp.get("epic")
                         if epic in market_data:
                             opportunity_market_data[epic] = market_data[epic]
+                        else:
+                            # Try to standardize the epic format if needed
+                            standardized_epic = self._standardize_epic_format(epic)
+                            if standardized_epic in market_data:
+                                opportunity_market_data[standardized_epic] = market_data[standardized_epic]
+                                # Update the epic in the opportunity to the standardized format
+                                opp["epic"] = standardized_epic
                     
                     strategist_result = self.strategist.run(
                         opportunities,
@@ -360,6 +367,21 @@ class SystemController:
         except Exception as e:
             logger.error(f"Error in trading cycle: {e}")
             return False
+    
+    def _standardize_epic_format(self, epic):
+        """Standardize epic format to OANDA format (e.g. EUR/USD to EUR_USD)"""
+        if "/" in epic:
+            return epic.replace("/", "_")
+        if "-" in epic:
+            return epic.replace("-", "_")
+        
+        # Handle full IG format if any left
+        if "CS.D." in epic and ".TODAY.IP" in epic:
+            pair = epic.replace("CS.D.", "").replace(".TODAY.IP", "")
+            if len(pair) == 6:
+                return f"{pair[:3]}_{pair[3:]}"
+        
+        return epic
     
     def run(self):
         """Main trading loop"""

@@ -491,8 +491,9 @@ def execute_trade(oanda_client, trade, positions=None):
         size = trade.get("size")
         risk_percent = trade.get("risk_percent", 2.0)
         
-        # Convert IG epic to OANDA instrument
-        instrument = convert_ig_epic_to_oanda(epic)
+        # Use OANDA instrument format (EUR_USD)
+        # If in IG format, convert it
+        instrument = standardize_instrument_name(epic)
         
         # Get account information
         account = oanda_client.get_account()
@@ -551,8 +552,19 @@ def execute_trade(oanda_client, trade, positions=None):
                 logger.warning(f"Could not convert size '{size}' to float, using default")
                 size = 0.01
             
-            # Convert size to units with a conservative multiplier
-            units = int(size * 100)  # Small multiplier for small account
+            # Check if size is very small (likely in lots format)
+            if size < 1:
+                logger.info(f"Interpreting size {size} as risk-based value, converting to {size*100} lots")
+                units = int(size * 100000)  # Convert from lots to units (1 lot = 100,000 units)
+            else:
+                # Size is likely already in units or a risk-based value
+                if size > 100:  # If larger than 100, assume it's already in units
+                    units = int(size)
+                else:
+                    # Assume it's a risk-based value (e.g. 40.0 is 40% risk)
+                    logger.info(f"Interpreting size {size} as risk-based value, converting to {size/100:.2f} lots")
+                    units = int(size * 1000)  # Use a basic scaling factor
+            
             logger.info(f"Using size-based position: {size} → {units} units")
         
         # Ensure minimum unit size (1) and apply direction
@@ -703,8 +715,8 @@ def close_position(oanda_client, position_action, positions):
         deal_id = position_action.get("dealId")
         epic = position_action.get("epic")
         
-        # Convert IG epic to OANDA instrument
-        instrument = convert_ig_epic_to_oanda(epic)
+        # Use OANDA instrument format
+        instrument = standardize_instrument_name(epic)
         
         logger.info(f"Closing position {deal_id} | {instrument}")
         
@@ -756,8 +768,8 @@ def update_stop_loss(oanda_client, position_action):
         epic = position_action.get("epic")
         new_level = position_action.get("new_level")
         
-        # Convert IG epic to OANDA instrument
-        instrument = convert_ig_epic_to_oanda(epic)
+        # Use OANDA instrument format
+        instrument = standardize_instrument_name(epic)
         
         logger.info(f"Updating stop for {instrument} to {new_level}")
         
@@ -790,40 +802,34 @@ def update_stop_loss(oanda_client, position_action):
         return False, {"outcome": "ERROR", "reason": str(e)}
 
 
-def convert_ig_epic_to_oanda(epic):
-    """Convert IG epic to OANDA instrument format
+def standardize_instrument_name(epic):
+    """Standardize instrument name to OANDA format (e.g. EUR/USD to EUR_USD)
     
     Args:
-        epic (str): IG epic
+        epic (str): Instrument name in any format
         
     Returns:
-        str: OANDA instrument
+        str: Standardized instrument name in OANDA format
     """
-    # Map IG epics to OANDA instruments
-    epic_map = {
-        "CS.D.EURUSD.TODAY.IP": "EUR_USD",
-        "CS.D.USDJPY.TODAY.IP": "USD_JPY",
-        "CS.D.GBPUSD.TODAY.IP": "GBP_USD",
-        "CS.D.AUDUSD.TODAY.IP": "AUD_USD",
-        "CS.D.USDCAD.TODAY.IP": "USD_CAD",
-        "CS.D.USDCHF.TODAY.IP": "USD_CHF",
-        "CS.D.NZDUSD.TODAY.IP": "NZD_USD",
-        "CS.D.EURJPY.TODAY.IP": "EUR_JPY",
-        "CS.D.EURGBP.TODAY.IP": "EUR_GBP",
-        "CS.D.GBPJPY.TODAY.IP": "GBP_JPY",
-        "CS.D.AUDJPY.TODAY.IP": "AUD_JPY",
-        "CS.D.AUDNZD.TODAY.IP": "AUD_NZD"
-    }
-    
-    # Return mapped instrument or original if not found
-    if epic in epic_map:
-        return epic_map[epic]
-    
-    # Try to extract the currency pair from the epic
-    import re
-    match = re.search(r'\.D\.([A-Z]{3})([A-Z]{3})\.', epic)
-    if match:
-        return f"{match.group(1)}_{match.group(2)}"
-    
-    # Return original if not matched
+    # Check if already in OANDA format (containing "_")
+    if "_" in epic:
+        return epic
+        
+    # Convert common separators
+    if "/" in epic:
+        return epic.replace("/", "_")
+    if "-" in epic:
+        return epic.replace("-", "_")
+        
+    # Handle IG epic format
+    if "CS.D." in epic and ".TODAY.IP" in epic:
+        pair = epic.replace("CS.D.", "").replace(".TODAY.IP", "")
+        if len(pair) == 6:
+            return f"{pair[:3]}_{pair[3:]}"
+            
+    # If it's a standard currency pair without separator, add it
+    if len(epic) == 6 and epic.isalpha():
+        return f"{epic[:3]}_{epic[3:]}"
+        
+    # Return original if no conversion rule matches
     return epic

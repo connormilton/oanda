@@ -52,9 +52,8 @@ class DataCollector:
                 "h4": {"granularity": "H4", "count": 30}     # 5 days (6 candles per day)
             }
         
-        # Convert IG epic to OANDA instrument
-        from utils.oanda_connector import convert_ig_epic_to_oanda
-        instrument = convert_ig_epic_to_oanda(epic)
+        # Use the instrument directly as OANDA uses standard format (EUR_USD)
+        instrument = epic
         
         results = {}
         
@@ -102,9 +101,7 @@ class DataCollector:
     def get_price_snapshot(self, epic):
         """Get current market price snapshot"""
         try:
-            # Convert IG epic to OANDA instrument
-            from utils.oanda_connector import convert_ig_epic_to_oanda
-            instrument = convert_ig_epic_to_oanda(epic)
+            instrument = epic
             
             # Get price data
             price_data = self.oanda.get_price(instrument)
@@ -116,7 +113,7 @@ class DataCollector:
                 
                 return {
                     "bid": bid,
-                    "offer": ask,  # OANDA uses "ask", IG uses "offer"
+                    "offer": ask,  # OANDA uses "ask", we'll use "offer" for consistency with previous code
                     "epic": epic,
                     "instrument": instrument,
                     "timestamp": datetime.now(timezone.utc).isoformat()
@@ -134,20 +131,3 @@ class DataCollector:
         except Exception as e:
             logger.error(f"Error getting instruments: {e}")
             return []
-            
-    def convert_oanda_instrument_to_ig_epic(self, instrument):
-        """Convert OANDA instrument to IG epic format
-        
-        Args:
-            instrument (str): OANDA instrument name (e.g. EUR_USD)
-            
-        Returns:
-            str: IG epic format
-        """
-        # Check if instrument has OANDA format (XXX_YYY)
-        if "_" in instrument:
-            base, quote = instrument.split("_")
-            return f"CS.D.{base}{quote}.TODAY.IP"
-        
-        # Return original if not in standard format
-        return instrument

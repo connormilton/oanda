@@ -18,7 +18,7 @@ from agents.strategist_agent import StrategistAgent
 from agents.executor_agent import ExecutorAgent
 from agents.team_reviewer import TeamReviewer
 
-from utils.oanda_connector import (
+from utils.api_connectors import (
     execute_trade, 
     close_position, 
     update_stop_loss
@@ -26,7 +26,7 @@ from utils.oanda_connector import (
 
 logger = logging.getLogger("CollaborativeTrader")
 
-# Core currency pairs to trade (OANDA format)
+# Core currency pairs to trade
 FOREX_PAIRS = [
     "CS.D.EURUSD.TODAY.IP", "CS.D.USDJPY.TODAY.IP", "CS.D.GBPUSD.TODAY.IP", 
     "CS.D.AUDUSD.TODAY.IP", "CS.D.USDCAD.TODAY.IP", "CS.D.GBPJPY.TODAY.IP",
@@ -37,14 +37,14 @@ FOREX_PAIRS = [
 class SystemController:
     """Controls the collaborative trading system workflow"""
     
-    def __init__(self, oanda_client):
+    def __init__(self, ig_service, polygon_client):
         # Set up OpenAI API
         openai.api_key = os.getenv("OPENAI_API_KEY")
         
         # Initialize components
         self.budget = LLMBudgetManager()
         self.memory = TradingMemory()
-        self.data = DataCollector(oanda_client)
+        self.data = DataCollector(ig_service, polygon_client)
         
         # Initialize agents
         self.scout = ScoutAgent(self.budget)
@@ -53,7 +53,7 @@ class SystemController:
         self.team_reviewer = TeamReviewer(self.budget)
         
         # Trading services
-        self.oanda = oanda_client
+        self.ig = ig_service
         
         # Initialize agent responses
         self.agent_responses = {
@@ -80,7 +80,7 @@ class SystemController:
             trade_actions = executor_result.get("trade_actions", [])
             for trade in trade_actions:
                 if trade.get("action_type") == "OPEN":
-                    success, trade_result = execute_trade(self.oanda, trade)
+                    success, trade_result = execute_trade(self.ig, trade)
                     if success:
                         logger.info(f"Successfully executed trade: {trade.get('epic')} {trade.get('direction')}")
                         # Log the trade in memory
@@ -106,7 +106,7 @@ class SystemController:
                 action_type = action.get("action_type", "").upper()
                 
                 if action_type == "CLOSE":
-                    success, result = close_position(self.oanda, action, positions)
+                    success, result = close_position(self.ig, action, positions)
                     if success:
                         logger.info(f"Successfully closed position: {action.get('epic')} {action.get('dealId')}")
                         # Log the close
@@ -115,7 +115,7 @@ class SystemController:
                         logger.error(f"Failed to close position: {result}")
                         
                 elif action_type == "UPDATE_STOP":
-                    success, result = update_stop_loss(self.oanda, action)
+                    success, result = update_stop_loss(self.ig, action)
                     if success:
                         logger.info(f"Successfully updated stop: {action.get('epic')} {action.get('dealId')} to {action.get('new_level')}")
                         # Log the update
@@ -234,18 +234,12 @@ class SystemController:
     def run(self):
         """Main trading loop"""
         logger.info("Starting Collaborative LLM Forex Trading System")
-        print("\nSTARTING COLLABORATIVE LLM FOREX TRADING SYSTEM (OANDA)")
+        print("\nSTARTING COLLABORATIVE LLM FOREX TRADING SYSTEM")
         
         # Display initial budget
         budget_status = self.budget.get_status()
         print(f"Daily budget: ${budget_status['total_budget']:.2f}")
         print(f"Available: ${budget_status['remaining']:.2f}")
-        
-        # Display OANDA account info
-        account_data = self.data.get_account_data()
-        print(f"\nOANDA Account: {account_data.get('accountId')}")
-        print(f"Balance: {account_data.get('balance')} {account_data.get('currency')}")
-        print(f"Available: {account_data.get('available')} {account_data.get('currency')}")
         
         # Trading loop
         while True:

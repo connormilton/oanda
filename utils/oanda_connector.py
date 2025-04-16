@@ -252,45 +252,26 @@ class OandaAPI:
         Returns:
             dict: Order details
         """
-        # IMPORTANT: OANDA requires whole number of units, so convert to standard lots (100,000 units)
-        # Convert size (in lots) to units
-        # For example: 0.01 lots = 1,000 units, 0.1 lots = 10,000 units, 1 lot = 100,000 units
-        # Minimum is 1 unit
-        
-        # First check if units is already an integer (proper format)
-        if not isinstance(units, int):
-            # Convert from lot size to actual units
-            try:
-                # Convert to float first to handle strings
-                float_units = float(units)
-                
-                # Convert to whole units (1 lot = 100,000 units)
-                units_as_int = int(float_units * 100000)
-                
-                # Ensure we have at least 1 unit
-                if abs(units_as_int) < 1:
-                    units_as_int = 1 if units_as_int >= 0 else -1
-                    
-                units = units_as_int
-                logger.info(f"Converted lot size {float_units} to {units} units")
-            except (ValueError, TypeError) as e:
-                logger.error(f"Could not convert units to integer: {e}")
-                units = 1 if units > 0 else -1  # Default to minimum
+        # Ensure units is an integer - OANDA requires whole numbers
+        try:
+            units = int(units)
+        except (ValueError, TypeError):
+            logger.warning(f"Could not convert units '{units}' to integer, using minimum value")
+            units = 1  # Default to minimum
         
         # Build order request
         order_data = {
             "order": {
                 "instrument": instrument,
-                "units": str(units),
+                "units": str(units),  # OANDA API expects string
                 "timeInForce": "FOK",  # Fill or Kill
-                "positionFill": "DEFAULT"
+                "positionFill": "DEFAULT",
+                "type": "MARKET"  # Default to market order
             }
         }
         
-        # Determine order type
-        if price is None:
-            order_data["order"]["type"] = "MARKET"
-        else:
+        # For limit orders, add price
+        if price is not None:
             order_data["order"]["type"] = "LIMIT"
             order_data["order"]["price"] = str(price)
         
@@ -298,7 +279,8 @@ class OandaAPI:
         if stop_loss is not None:
             order_data["order"]["stopLossOnFill"] = {
                 "price": str(stop_loss),
-                "timeInForce": "GTC"  # Good Till Cancelled
+                "timeInForce": "GTC",  # Good Till Cancelled
+                "triggerMode": "TOP_OF_BOOK"  # Standard trigger mode
             }
         
         # Add take profit if provided
@@ -423,23 +405,30 @@ def execute_trade(oanda_client, trade):
     try:
         epic = trade.get("epic")
         direction = trade.get("direction")
-        size = float(trade.get("size", 1.0))
+        size = trade.get("size", 1.0)
         
+        # First ensure size is a float
+        try:
+            size = float(size)
+        except (ValueError, TypeError):
+            logger.warning(f"Could not convert size '{size}' to float, using default")
+            size = 1.0
+
         # Convert IG epic to OANDA instrument
         instrument = convert_ig_epic_to_oanda(epic)
         
-        # Determine units based on direction
-        # Convert size from lots to units (1 lot = 100,000 units)
-        # Minimum is 1 unit
-        units_raw = size * 100000
-        units = int(units_raw)
+        # IMPROVED CONVERSION: Convert size from lots to units (1 lot = 100,000 units)
+        # First, standardize to proper float value
+        units = int(size * 100000)
+        
+        # Ensure minimum unit size (1) and apply direction
         if abs(units) < 1:
-            units = 1 if direction == "BUY" else -1
+            units = 1
             
-        # Apply direction
-        if direction == "SELL" and units > 0:
-            units = -units
-        elif direction == "BUY" and units < 0:
+        # Apply direction to units
+        if direction == "SELL":
+            units = -abs(units)
+        else:  # BUY
             units = abs(units)
             
         logger.info(f"Executing {direction} {instrument} | Units: {units} (from size {size})")

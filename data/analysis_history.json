@@ -1,5 +1,5 @@
 {
-  "last_updated": "2025-04-15T20:10:33.548347+00:00",
+  "last_updated": "2025-04-15T23:18:15.163183+00:00",
   "pairs": {
     "CS.D.EURUSD.TODAY.IP": [
       {
@@ -89,6 +89,21 @@
         "pattern": "Pullback",
         "reasoning": "The market shows a potential for GBP strength, entering on a pullback offers a favorable risk-reward.",
         "timestamp": "2025-04-15T20:10:33.548341+00:00"
+      }
+    ],
+    "EUR_USD": [
+      {
+        "direction": "BUY",
+        "entry_price": 1.128,
+        "stop_loss": 1.1265,
+        "take_profit": [
+          1.1295,
+          1.1305
+        ],
+        "risk_reward": 2.0,
+        "pattern": "Bullish Price Action Confirmation",
+        "reasoning": "High analysis quality and fits within our risk management strategy. Aiming for consistent risk per trade and balancing portfolio.",
+        "timestamp": "2025-04-15T23:18:15.163155+00:00"
       }
     ]
   }
